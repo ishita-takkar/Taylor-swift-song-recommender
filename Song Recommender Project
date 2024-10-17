@@ -1,0 +1,350 @@
+import babypandas as bpd
+import numpy as np
+from IPython.display import HTML, display, IFrame, YouTubeVideo, Markdown, clear_output
+import ipywidgets as widgets
+
+import matplotlib.pyplot as plt
+plt.style.use('ggplot')
+plt.rcParams["figure.figsize"] = (10, 5)
+
+import otter
+import numbers
+grader = otter.Notebook()
+
+def play_spotify(uri):
+    code = uri[uri.rfind(':')+1:]
+    src = f"https://open.spotify.com/embed/track/{code}"
+    width = 400
+    height = 75
+    display(IFrame(src, width, height))
+
+lyrics = bpd.read_csv('data/lyrics.csv')
+lyrics
+tswift = bpd.read_csv('data/tswift.csv')
+tswift
+albums = bpd.read_csv('data/albums.csv')
+albums
+
+def song_year(year):
+    return int(year.split(', ')[1])
+albums = albums.assign(Year=albums.get('Release Date').apply(song_year)).drop(columns='Release Date')
+tswift = tswift.merge(albums, on='Album')
+tswift
+
+tswift.groupby('Year').count().plot(kind='line', y='Album', title='Songs released yearly by Taylor Swift')
+
+sister_albums = tswift[tswift.get('Year') == 2020].get('Album').unique()
+sister_albums
+
+most_pop = tswift.sort_values(by='Popularity').get('Song Name').iloc[-1]
+least_pop = tswift.sort_values(by='Popularity').get('Song Name').iloc[0]
+print(f'The most popular Taylor Swift song right now is {most_pop}.')
+print(f'The least popular Taylor Swift song right now is {least_pop}.')
+
+popularity_by_year= bpd.DataFrame().assign(Max_Popularity=tswift.groupby('Year').max().get('Popularity'))
+popularity_by_year=popularity_by_year.assign(Median_Popularity=tswift.groupby('Year').median().get('Popularity'))
+popularity_by_year=popularity_by_year.get(['Max_Popularity','Median_Popularity'])
+popularity_by_year
+
+popularity_by_year.plot(kind='line',title='Popularity of Taylor Swift songs over time')
+
+tswift.plot(kind='scatter',x='Loudness',y='Energy',title='Relation between Loudness and Energy of Taylor Swift Songs');
+
+# The code below plots the line of best fit; do not alter it!
+x = tswift.get('Loudness')
+y = tswift.get('Energy')
+a, b = np.polyfit(x, y, 1)
+plt.plot(x, a * x + b, label='Line of Best Fit')        
+plt.legend()
+plt.show()
+
+tswift.plot(kind='scatter',x='Valence',y='Popularity',title='Relation between Valence and Popularity of Songs');
+
+# The code below plots the line of best fit; do not alter it!
+x = tswift.get('Valence')
+y = tswift.get('Popularity')
+a, b = np.polyfit(x, y, 1)
+plt.plot(x, a * x + b, label='Line of Best Fit')        
+plt.legend()
+plt.show()
+
+tswift.plot(kind='hist',density=True, ec='w',y='Valence',title='Distribution of Valence for all songs of Taylor Swift');
+
+to_get_albums = tswift[(tswift.get('Mode')==0)].groupby('Album').count()
+to_get_albums = to_get_albums[to_get_albums.get('Song Name')>=2]
+to_get_albums = to_get_albums.reset_index()
+to_get_albums.plot(kind='barh',x='Album',y='Mode',legend=True,title='Count of Minor key in Albums of Taylor Swift');
+
+def sort_albums_by(feature):
+    sort_album = tswift.groupby('Album').mean().get(feature).sort_values(ascending=False).index
+    return np.array(sort_album)
+sort_albums_by('Energy')
+
+features = ['Popularity', 'Explicit', 'Danceability', 'Energy', 'Loudness',
+            'Speechiness', 'Acousticness', 'Instrumentalness', 'Liveness',
+            'Valence', 'Duration_ms', 'Tempo']
+
+for feature in features:
+    # These lines display the output nicely. You don't need to understand how they work.
+    display(Markdown(f"Taylor Swift albums, in descending order of `'{feature}'`:"))
+    display(Markdown("- " + ", ".join(sort_albums_by(feature))))
+display(Markdown(f"Taylor Swift albums, in descending order of `'Explicit'`:"))
+display(Markdown("- " + ", ".join(sort_albums_by('Explicit'))))
+
+def finding(common):
+    if common is True:
+        return 'collaborative'
+    else:
+        return 'solo'
+tswift_values=tswift.assign(values=tswift.get('Song Name').str.contains('Ft.'))
+comparing= tswift_values.groupby('values').mean().reset_index()
+comparing=comparing.assign(values=comparing.get('values').apply(finding)).groupby('values').mean()
+comparing.get(['Explicit','Danceability','Acousticness']).plot(kind='bar',title=' Average features of Collaborative vs Solo songs');
+
+billions_club = bpd.read_csv('data/billions_club.csv').set_index('URI')
+billions_club
+
+favorite_uri = '5O2P9iiztwhomNh8xkR9lJ'
+favorite_song_name = billions_club.get('Song Name').loc[favorite_uri]
+print(f'My favorite song is {favorite_song_name}. It has a URI of {favorite_uri}.')
+
+default_features = [
+    'Danceability', 
+    'Energy',
+    'Speechiness',
+    'Acousticness',
+    'Instrumentalness',
+    'Liveness',
+    'Valence'
+]
+
+def get_feature_values(input_uri, song_df, feature_list):
+    if input_uri in song_df.index:
+        return np.array(song_df.get(feature_list).loc[input_uri])
+    else:
+        print('This URI was not found.')
+        return None
+
+# Extracting audio features of favorite song
+get_feature_values(favorite_uri, billions_club, ['Danceability', 'Energy'])
+
+def calculate_similarity(features_1, features_2):
+    continuing_sum = 0
+    for i in np.arange(len(features_1)):
+        continuing_sum = continuing_sum + (features_1[i] - features_2[i])**2
+    return np.sqrt(continuing_sum)
+
+features_favsong=get_feature_values(favorite_uri, billions_club, ['Danceability', 'Energy','Valence','Acousticness'])
+features_karma=get_feature_values(tswift[tswift.get('Song Name') == 'Karma'].reset_index().get('URI').iloc[0],tswift, ['Danceability', 'Energy','Valence','Acousticness'])
+favorite_vs_karma = calculate_similarity(features_favsong,features_karma)
+favorite_vs_karma
+
+def select_top_recommendations(similarity_scores, n):
+    similarities=tswift.assign(Similarity=similarity_scores).sort_values(by='Similarity').take(np.arange(n)).drop(columns=['Similarity'])
+    return similarities
+
+def song_recommender(input_uri, song_df, n, feature_list=default_features):
+    return select_top_recommendations(calculate_similarity_for_all(input_uri, song_df, feature_list),n).get(['Album','Song Name']+ feature_list)
+# The following call to song_recommender finds the 5 Taylor Swift songs
+# that are most similar to your chosen song, in terms of 'Danceability' and 'Energy'.
+print(f'Taylor Swift songs that are most similar to {favorite_song_name}:')
+song_recommender(favorite_uri, billions_club, 5, ['Danceability', 'Energy' ])
+
+default = 'Bank Account by 21 Savage'
+
+def get_and_format_recommendations(song_name):
+    song, artist = song_name.split(' by ')
+    row = billions_club[(billions_club.get('Song Name') == song) & (billions_club.get('Artist') == artist)]
+    uri = row.index[0]
+    recommendations_df = song_recommender(uri, billions_club, 5, default_features)
+    display(HTML(f'<h3>The song you chose was {billions_club.get("Song Name").loc[uri]} by {billions_club.get("Artist").loc[uri]}.</h3>'))
+    play_spotify(uri)
+    display(HTML('<h4>Here are the 5 most similar Taylor Swift songs we found.</h4>'))
+    for recommended_uri in recommendations_df.index:
+        play_spotify(recommended_uri)
+
+song_options = np.sort(billions_club.get('Song Name') + ' by ' + billions_club.get('Artist'))
+song_widget = widgets.Dropdown(options=song_options, description='Song', layout={'width': '525px'}, value=default)
+   
+def change_rec(change):
+    if change['name'] == 'value' and change['new'] != change['old']:
+        clear_output()
+        display(song_widget)
+        get_and_format_recommendations(song_widget.value)
+
+display(song_widget)
+get_and_format_recommendations(default)
+song_widget.observe(change_rec)
+
+default_tswift = 'Enchanted, from the album Speak Now'
+
+def get_and_format_recommendations_tswift(song_name):
+    song, album = song_name.split(', from the album ')
+    
+    row = tswift[(tswift.get('Song Name') == song)]
+    uri = row.index[0]
+    recommendations_df = song_recommender(uri, tswift, 6, default_features)
+    display(HTML(f'<h3>The song you chose was {tswift.get("Song Name").loc[uri]}, from the album {tswift.get("Album").loc[uri]}.</h3>'))
+    play_spotify(recommendations_df.index[0])
+    display(HTML('<h4>Here are the 5 most similar <b>other</b> Taylor Swift songs we found.</h4>'))
+    for recommended_uri in recommendations_df.index[1:]:
+        play_spotify(recommended_uri)
+
+by_album = tswift.sort_values(['Album', 'Disc Number', 'Track Number'])
+song_options_tswift = np.array(by_album.get('Song Name') + ', from the album ' + by_album.get('Album'))
+song_widget_tswift = widgets.Dropdown(options=song_options_tswift, description='Song', layout={'width': '525px'}, value=default_tswift)
+   
+def change_rec_tswift(change):
+    if change['name'] == 'value' and change['new'] != change['old']:
+        clear_output()
+        display(song_widget_tswift)
+        get_and_format_recommendations_tswift(song_widget_tswift.value)
+
+display(song_widget_tswift)
+get_and_format_recommendations_tswift(default_tswift)
+song_widget_tswift.observe(change_rec_tswift)
+
+display(IFrame(src="https://shaynak.github.io/taylor-swift", width=800, height=600))
+
+casually_cruel =lyrics[lyrics.get('Lyrics').str.contains('casually cruel')==True]
+casually_cruel
+
+phrase = 'casually cruel'
+cruel_fine_lines = np.array([])
+for line in fine_lines:
+    if phrase in line.lower():
+        cruel_fine_lines = np.append(cruel_fine_lines,line)
+    
+cruel_fine_lines
+
+def isolate_phrase(song_title, phrase):
+    checking_line = np.array([])
+    for line in lyrics.get('Lyrics').loc[song_title].split('\n'):
+        if phrase.lower() in line.lower():
+            checking_line = np.append(checking_line, line)
+    return checking_line
+        
+
+isolate_phrase('Mastermind', 'plan')
+
+def surround_phrase(song_title, phrase):
+    checking_line = np.array([])
+    lines_of_song = lyrics.get('Lyrics').loc[song_title].split('\n')
+    for k in np.arange(len(lines_of_song)):
+        if phrase.lower() in lines_of_song[k].lower():
+            if k == 0:
+                checking_line = np.append(checking_line, lines_of_song[k])
+                checking_line = np.append(checking_line, lines_of_song[k+1])
+            elif k == len(lines_of_song) - 1:
+                checking_line = np.append(checking_line, lines_of_song[k-1])
+                checking_line = np.append(checking_line, lines_of_song[k])
+            else:
+                checking_line = np.append(checking_line, lines_of_song[k-1])
+                checking_line = np.append(checking_line, lines_of_song[k])
+                checking_line = np.append(checking_line, lines_of_song[k+1])
+    return checking_line
+
+isolate_phrase('Mastermind','plan')
+surround_phrase('Mastermind', 'time')
+
+def one_song_search(song_title, phrase):
+    checking_line = np.array([])
+    getting_album = lyrics.get('Album').loc[song_title]
+    lines_of_song = lyrics.get('Lyrics').loc[song_title].split('\n')
+    for k in np.arange(len(lines_of_song)):
+        if phrase.lower() in lines_of_song[k].lower():
+            if k == 0:
+                checking_line = np.append(checking_line, lines_of_song[k])
+                checking_line = np.append(checking_line, lines_of_song[k+1])
+                checking_line = np.append(checking_line, song_title + ', ' + getting_album )
+            elif k == len(lines_of_song) - 1:
+                checking_line = np.append(checking_line, lines_of_song[k-1])
+                checking_line = np.append(checking_line, lines_of_song[k])
+                checking_line = np.append(checking_line, song_title + ', ' + getting_album)
+            else:
+                checking_line = np.append(checking_line, lines_of_song[k-1])
+                checking_line = np.append(checking_line, lines_of_song[k])
+                checking_line = np.append(checking_line, lines_of_song[k+1])
+                checking_line = np.append(checking_line, song_title + ', ' + getting_album)
+    return checking_line   
+    
+one_song_search('Mastermind', 'time')
+
+fifteen_songs = phrase_match_df('fifteen').reset_index()
+fifteen_array=np.array([])
+for entries in np.arange(fifteen_songs.shape[0]):
+    lyric = fifteen_songs.get('Song').loc[entries]
+    each = one_song_search(lyric,'fifteen')
+    fifteen_array=np.append(fifteen_array,each)
+fifteen_array
+
+def search_for(phrase):
+    phrase_songs = phrase_match_df(phrase).reset_index()
+    song_array=np.array([])
+    for entries in np.arange(phrase_songs.shape[0]):
+        lyric = phrase_songs.get('Song').loc[entries]
+        each = one_song_search(lyric,phrase)
+        song_array = np.append(song_array,each) 
+    return song_array
+# trying to look for words and phrases.
+search_for('fifteen')
+
+play_spotify('1LLXZFeAHK9R4xUramtUKw')
+
+lover_df = lyrics[lyrics.get('Album')=='Lover']
+lover_df
+
+unique_words_raw = lover_df.get('Lyrics').str.lower().str.split()
+unique_words_raw = np.unique(unique_words_raw.sum())
+unique_words_raw
+
+def drop_punctuation(word):
+    word = word.strip("'")
+    word = word.strip('"')
+    word = word.replace('(','')
+    word = word.replace(')','')
+    word = word.replace('?','')
+    word = word.replace('.','')
+    word = word.replace(',','')
+    word = word.replace(';','')
+    word = word.replace('-','')
+    word = word.replace('_','')
+    word = word.replace('\\','')
+    word = word.replace('"',"'")
+    return word  
+
+unique_words = np.array([])
+for k in np.arange(len(unique_words_raw)):
+    unique_words = np.append(unique_words,drop_punctuation(unique_words_raw[k]))
+    unique_words = np.unique(unique_words)
+
+unique_words
+
+counts_df = bpd.read_csv('data/word_counts.csv').set_index('word')
+counts_df
+
+tf_numerator = counts_df.get('You Need To Calm Down').loc['about']
+tf_denominator = counts_df.get('You Need To Calm Down').sum()
+idf_numerator = counts_df.shape[1]
+idf_denominator = np.count_nonzero(counts_df.loc['about'])
+tfidf_of_about = (tf_numerator / tf_denominator) * np.log(idf_numerator / idf_denominator) 
+tfidf_of_about
+
+idf_array = np.array([])
+word_array = counts_df.index
+# Looping through each word and computing its IDF.
+for word in word_array:
+    idf=np.log(counts_df.shape[1]/(np.count_nonzero(counts_df.loc[word])))
+    idf_array=np.append(idf_array,idf)
+idf_array
+
+top_10_summer = x=every_tfidf.get('Cruel Summer').sort_values(ascending=False).take([0,1,2,3,4,5,6,7,8,9]).index
+top_10_summer = np.array([])
+top_10_summer=np.append(top_10_summer,x)
+top_10_summer
+
+def ten_keywords(song_name):
+    tenwords=np.array([])
+    getwords=every_tfidf.get(song_name).sort_values(ascending=False).take([0,1,2,3,4,5,6,7,8,9]).index
+    tenwords=np.append(tenwords,getwords)
+    return tenwords
